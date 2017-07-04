@@ -21,6 +21,7 @@ class ReactAwareGuzzleClientFactory
 
     public function createGuzzleClient(
         LoopInterface $eventLoop,
+        array $config = [],
         CurlFactory $curlFactory = null,
         LoggerInterface $logger = null
     ) : Client
