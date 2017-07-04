@@ -3,10 +3,12 @@
 namespace Nopolabs;
 
 
+use GuzzleHttp\Client;
 use GuzzleHttp\Handler\CurlFactory;
 use GuzzleHttp\Handler\CurlFactoryInterface;
 use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\Handler\EasyHandle;
+use GuzzleHttp\HandlerStack;
 use Psr\Http\Message\RequestInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -26,7 +28,18 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
     /** @var TimerInterface */
     private $timer;
 
-    public function __construct(LoopInterface $eventLoop, LoggerInterface $logger = null)
+    /**
+     * ReactAwareCurlFactory wraps an instance of CurlFactory and keeps
+     * track of active curl handles. When there are active curl handles it starts
+     * a periodic task on the React event loop that calls CurlMultiHandler::tick()
+     * allowing tasks in the Guzzle task queue to be processed.
+     * The periodic task is stopped when there are no more active curl handles
+     * and the Guzzle task queue is empty.
+     *
+     * @param LoopInterface $eventLoop
+     * @param LoggerInterface|null $logger
+     */
+    protected function __construct(LoopInterface $eventLoop, LoggerInterface $logger = null)
     {
         $this->eventLoop = $eventLoop;
         $this->logger = $logger ?? new NullLogger();
@@ -35,20 +48,59 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
         $this->count = 0;
     }
 
-    public function setHandler(CurlMultiHandler $handler)
+    /**
+     * There is a circular dependency between ReactAwareCurlFactory and CurlMultiHandler.
+     *
+     * @param LoopInterface $eventLoop
+     * @param LoggerInterface|null $logger
+     * @return ReactAwareCurlFactory
+     */
+    public static function createFactory(
+        LoopInterface $eventLoop,
+        LoggerInterface $logger = null) : ReactAwareCurlFactory
     {
-        $this->handler = $handler;
+        $reactAwareCurlFactory = new ReactAwareCurlFactory($eventLoop, $logger);
+        $handler = new CurlMultiHandler(['handle_factory' => $reactAwareCurlFactory]);
+        $reactAwareCurlFactory->setHandler($handler);
+
+        return $reactAwareCurlFactory;
+    }
+
+    /**
+     * Example usage: $client = ReactAwareCurlFactory::createFactory($eventLoop)->createClient();
+     *
+     * @param HandlerStack|null $handlerStack
+     * @return Client
+     */
+    public function createClient(HandlerStack $handlerStack = null) : Client
+    {
+        $config['handler'] = $handlerStack ?? HandlerStack::create($this->getHandler());
+
+        return new Client($config);
+    }
+
+    /**
+     * Access to the CurlMultiHandler to allow construction of a Guzzle Client with a custom HandlerStack.
+     *
+     * @return CurlMultiHandler
+     */
+    public function getHandler() : CurlMultiHandler
+    {
+        return $this->handler;
     }
 
     public function tick()
     {
-        $this->handler->tick();
+        $this->getHandler()->tick();
 
-        if ($this->count === 0 && $this->queueIsEmpty()) {
+        if ($this->noMoreWork()) {
             $this->stopTimer();
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function create(RequestInterface $request, array $options)
     {
         $this->incrementCount();
@@ -56,6 +108,9 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
         return $this->factory->create($request, $options);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function release(EasyHandle $easy)
     {
         $this->factory->release($easy);
@@ -63,26 +118,41 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
         $this->decrementCount();
     }
 
+    protected function setHandler(CurlMultiHandler $handler)
+    {
+        $this->handler = $handler;
+    }
+
+    protected function noMoreWork() : bool
+    {
+        return $this->noActiveHandles() && $this->queueIsEmpty();
+    }
+
+    protected function noActiveHandles() : bool
+    {
+        return $this->count === 0;
+    }
+
     protected function queueIsEmpty() : bool
     {
         return \GuzzleHttp\Promise\queue()->isEmpty();
     }
 
-    private function incrementCount()
+    protected function incrementCount()
     {
-        if ($this->count === 0) {
+        if ($this->noActiveHandles()) {
             $this->startTimer();
         }
 
         $this->count++;
     }
 
-    private function decrementCount()
+    protected function decrementCount()
     {
         $this->count--;
     }
 
-    private function startTimer()
+    protected function startTimer()
     {
         if ($this->timer === null) {
             $this->timer = $this->eventLoop->addPeriodicTimer(0, [$this, 'tick']);
@@ -91,7 +161,7 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
         }
     }
 
-    private function stopTimer()
+    protected function stopTimer()
     {
         if ($this->timer !== null) {
             $this->timer->cancel();
