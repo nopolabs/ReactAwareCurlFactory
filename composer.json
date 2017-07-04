@@ -1,7 +1,14 @@
 {
-    "name": "root/react-aware-curl-factory",
+    "name": "nopolabs/react-aware-guzzle-client",
     "description": "An implementation of GuzzleHttp\\Handler\\CurlFactoryInterface that plays nicely with React",
     "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Dan Revel",
+            "email": "dan@nopolabs.com"
+        }
+    ],
     "require": {
         "php": ">=7.0",
         "guzzlehttp/guzzle": "^6.2",
@@ -17,12 +24,5 @@
     },
     "autoload-dev": {
         "psr-4": {"Nopolabs\\": "tests"}
-    },
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Dan Revel",
-            "email": "dan@nopolabs.com"
-        }
-    ]
+    }
 }
