@@ -3,12 +3,10 @@
 namespace Nopolabs;
 
 
-use GuzzleHttp\Client;
 use GuzzleHttp\Handler\CurlFactory;
 use GuzzleHttp\Handler\CurlFactoryInterface;
 use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\Handler\EasyHandle;
-use GuzzleHttp\HandlerStack;
 use Psr\Http\Message\RequestInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -37,65 +35,30 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
      * and the Guzzle task queue is empty.
      *
      * @param LoopInterface $eventLoop
+     * @param CurlFactory $curlFactory
      * @param LoggerInterface|null $logger
      */
-    protected function __construct(LoopInterface $eventLoop, LoggerInterface $logger = null)
+    public function __construct(
+        LoopInterface $eventLoop,
+        CurlFactory $curlFactory,
+        LoggerInterface $logger = null
+    )
     {
         $this->eventLoop = $eventLoop;
+        $this->factory = $curlFactory;
         $this->logger = $logger ?? new NullLogger();
 
-        $this->factory = new CurlFactory(50);
         $this->count = 0;
     }
 
-    /**
-     * There is a circular dependency between ReactAwareCurlFactory and CurlMultiHandler.
-     *
-     * @param LoopInterface $eventLoop
-     * @param LoggerInterface|null $logger
-     * @return ReactAwareCurlFactory
-     */
-    public static function createFactory(
-        LoopInterface $eventLoop,
-        LoggerInterface $logger = null) : ReactAwareCurlFactory
+    public function setHandler(CurlMultiHandler $handler)
     {
-        $reactAwareCurlFactory = new ReactAwareCurlFactory($eventLoop, $logger);
-        $handler = new CurlMultiHandler(['handle_factory' => $reactAwareCurlFactory]);
-        $reactAwareCurlFactory->setHandler($handler);
-
-        return $reactAwareCurlFactory;
+        $this->handler = $handler;
     }
 
-    /**
-     * Example usage: $client = ReactAwareCurlFactory::createFactory($eventLoop)->createClient();
-     *
-     * @param HandlerStack|null $handlerStack
-     * @return Client
-     */
-    public function createClient(HandlerStack $handlerStack = null) : Client
-    {
-        $config['handler'] = $handlerStack ?? HandlerStack::create($this->getHandler());
-
-        return new Client($config);
-    }
-
-    /**
-     * Access to the CurlMultiHandler to allow construction of a Guzzle Client with a custom HandlerStack.
-     *
-     * @return CurlMultiHandler
-     */
     public function getHandler() : CurlMultiHandler
     {
         return $this->handler;
-    }
-
-    public function tick()
-    {
-        $this->getHandler()->tick();
-
-        if ($this->noMoreWork()) {
-            $this->stopTimer();
-        }
     }
 
     /**
@@ -118,12 +81,25 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
         $this->decrementCount();
     }
 
-    protected function setHandler(CurlMultiHandler $handler)
+    public function tick()
     {
-        $this->handler = $handler;
+        $this->getHandler()->tick();
+
+        if ($this->noMoreWork()) {
+            $this->stopTimer();
+        }
     }
 
-    protected function noMoreWork() : bool
+    public function isTimerActive() : bool
+    {
+        if ($this->timer) {
+            return $this->timer->isActive();
+        }
+
+        return false;
+    }
+
+    public function noMoreWork() : bool
     {
         return $this->noActiveHandles() && $this->queueIsEmpty();
     }
