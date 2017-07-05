@@ -20,7 +20,8 @@ class ReactAwareGuzzleClientTest extends TestCase
 
         $client = $factory->createGuzzleClient($eventLoop);
 
-        $promise = $client->getAsync('https://google.com')
+        // make an async request
+        $promise = $client->getAsync('http://nopolabs.com', ['timeout'=> 5])
             ->then(function(ResponseInterface $response) {
                 $this->response = $response;
                 return $response;
@@ -31,6 +32,7 @@ class ReactAwareGuzzleClientTest extends TestCase
             $eventLoop->tick();
         }
 
+        // check the results
         $this->assertNotNull($this->response);
         $this->assertInstanceOf(ResponseInterface::class, $this->response);
         $this->assertSame($this->response, $promise->wait());
