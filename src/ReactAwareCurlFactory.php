@@ -3,6 +3,7 @@
 namespace Nopolabs;
 
 
+use Exception;
 use GuzzleHttp\Handler\CurlFactory;
 use GuzzleHttp\Handler\CurlFactoryInterface;
 use GuzzleHttp\Handler\CurlMultiHandler;
@@ -83,7 +84,11 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
 
     public function tick()
     {
-        $this->getHandler()->tick();
+        try {
+            $this->getHandler()->tick();
+        } catch (Exception $exception) {
+            $this->logger->warning('ReactAwareCurlFactory::tick() '.$exception->getMessage());
+        }
 
         if ($this->noMoreWork()) {
             $this->stopTimer();
