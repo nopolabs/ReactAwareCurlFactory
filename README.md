@@ -16,6 +16,6 @@ public function newClient(
         LoggerInterface $logger = null) : Client
 {
     $clientFactory = new ReactAwareGuzzleClientFactory();
-    return $clientFactory->createGuzzleClient($eventLoop, $config, null, $logger);
+    return $clientFactory->createGuzzleClient($eventLoop, $config, $curlFactory, $logger);
 }
 ```
