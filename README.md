@@ -8,4 +8,15 @@
 
 An implementation of GuzzleHttp\Handler\CurlFactoryInterface that plays nicely with React.
 
-TODO motivation and discussion
+```php
+public function newClient(
+        LoopInterface $eventLoop,
+        array $config = [],
+        CurlFactory $curlFactory = null,
+        LoggerInterface $logger = null
+    ) : Client
+{
+    $clientFactory = new ReactAwareGuzzleClientFactory();
+    return $clientFactory->createGuzzleClient($eventLoop, $config, null, $logger);
+}
+```
