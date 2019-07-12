@@ -24,7 +24,7 @@ class ReactAwareCurlFactory implements CurlFactoryInterface
     /** @var CurlMultiHandler */
     private $handler;
 
-    /** @var TimerInterface */
+    /** @var TimerInterface|null */
     private $timer;
 
     /**
